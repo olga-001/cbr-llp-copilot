@@ -1,0 +1,50 @@
+
+# CBR Loan Loss Provisions Copilot
+# Python 3.12
+# MVP dependencies
+
+# Additional index for pre-built llama-cpp-python CPU wheels
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Streamlit UI
+streamlit==1.54.0
+
+# LangChain / RAG
+langchain==1.2.10
+langchain-core==1.2.16
+langchain-classic==1.0.1
+langchain-community==0.4.1
+langchain-chroma==1.1.0
+langchain-huggingface==1.2.1
+langchain-text-splitters==1.1.1
+
+# Vector database
+chromadb==1.5.2
+
+# Embeddings
+sentence-transformers==5.2.3
+
+# PyTorch CPU-only for Linux deployment
+torch==2.10.0+cpu ; sys_platform == "linux"
+
+# Local Windows environment
+torch==2.10.0 ; sys_platform == "win32"
+
+# Local GGUF LLM
+llama-cpp-python==0.3.21
+
+# Document processing
+pypdf==6.7.4
+pandas==2.3.3
+openpyxl==3.1.5
+
+# DOCX export
+python-docx==1.2.0
+
+# Configuration
+python-dotenv==1.2.1
+
+# Evaluation / tracing
+langsmith==0.7.9

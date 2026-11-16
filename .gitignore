@@ -1,0 +1,57 @@
+
+# ==========================================
+# CBR Loan Loss Provisions Copilot
+# ==========================================
+
+# Local data and vector database
+data/raw_docs/
+data/chroma/
+data/models/
+
+# Secrets and environment variables
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Test and tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# IDE and editor settings
+.idea/
+.vscode/
+
+# OS temporary files
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+~$*
+
+# Deployment artifacts and temporary checks
+chroma_restore_test/
+linux_dependency_check/
+linux_wheel_check/
+
+# Internal testing report
+evaluation/final_local_check_stage12.md
