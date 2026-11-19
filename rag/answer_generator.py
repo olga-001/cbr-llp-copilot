@@ -15,6 +15,7 @@ from rag.llm_config import (
     LLAMA_N_CTX,
     LLAMA_N_GPU_LAYERS,
     LLAMA_N_THREADS,
+    LLAMA_N_THREADS_BATCH,
     LLAMA_REPEAT_PENALTY,
     LLAMA_TEMPERATURE,
     LLAMA_TOP_P,
@@ -40,6 +41,7 @@ class AnswerLLMOutput(BaseModel):
 
 
 
+
 @lru_cache(maxsize=1)
 def get_llm() -> Llama:
     with measure_stage("llm.initialization"):
@@ -47,9 +49,17 @@ def get_llm() -> Llama:
             model_path=str(GGUF_MODEL_PATH),
             n_ctx=LLAMA_N_CTX,
             n_threads=LLAMA_N_THREADS,
+            n_threads_batch=LLAMA_N_THREADS_BATCH,
             n_gpu_layers=LLAMA_N_GPU_LAYERS,
             n_batch=LLAMA_N_BATCH,
             verbose=LLAMA_VERBOSE,
+        )
+
+        log_event(
+            f"LLM_THREADS_EFFECTIVE | "
+            f"n_threads={model.context_params.n_threads} | "
+            f"n_threads_batch="
+            f"{model.context_params.n_threads_batch}"
         )
 
     return model
@@ -790,6 +800,7 @@ def generate_answer_structured(
         f"n_ctx={LLAMA_N_CTX} | "
         f"max_tokens={LLAMA_MAX_TOKENS} | "
         f"n_threads={LLAMA_N_THREADS} | "
+        f"n_threads_batch={LLAMA_N_THREADS_BATCH} | "
         f"n_batch={LLAMA_N_BATCH} | "
         f"n_gpu_layers={LLAMA_N_GPU_LAYERS}"
     )

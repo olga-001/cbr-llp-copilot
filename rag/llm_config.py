@@ -28,6 +28,9 @@ LLAMA_REPEAT_PENALTY = float(os.getenv("LLAMA_REPEAT_PENALTY", "1.05"))
 LLAMA_N_GPU_LAYERS = int(os.getenv("LLAMA_N_GPU_LAYERS", "0"))
 
 LLAMA_N_THREADS = int(os.getenv("LLAMA_N_THREADS", "6"))
+LLAMA_N_THREADS_BATCH = int(
+    os.getenv("LLAMA_N_THREADS_BATCH", str(LLAMA_N_THREADS))
+)
 
 # Для слабой машины лучше чуть поменьше
 LLAMA_N_BATCH = int(os.getenv("LLAMA_N_BATCH", "64"))
