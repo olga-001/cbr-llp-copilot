@@ -1,4 +1,5 @@
 
+import os
 import sys
 from pathlib import Path
 
@@ -28,6 +29,7 @@ load_dotenv(
 # Project imports
 # ---------------------------------------------------------
 
+from rag.runtime_diagnostics import measure_stage, log_event
 from deployment.bootstrap import prepare_runtime
 from rag.answer_pipeline import answer_question
 
@@ -64,9 +66,24 @@ st.set_page_config(
 # Deployment bootstrap
 # ---------------------------------------------------------
 
+
 @st.cache_resource(show_spinner=False)
 def initialize_runtime():
-    prepare_runtime()
+    log_event(
+        f"RUNTIME_CONFIG | "
+        f"os_cpu_count={os.cpu_count()} | "
+        f"OMP_NUM_THREADS={os.getenv('OMP_NUM_THREADS', 'N/A')} | "
+        f"MKL_NUM_THREADS={os.getenv('MKL_NUM_THREADS', 'N/A')} | "
+        f"LLAMA_N_CTX={os.getenv('LLAMA_N_CTX', 'default')} | "
+        f"LLAMA_N_THREADS={os.getenv('LLAMA_N_THREADS', 'default')} | "
+        f"LLAMA_N_BATCH={os.getenv('LLAMA_N_BATCH', 'default')} | "
+        f"LLAMA_MAX_TOKENS={os.getenv('LLAMA_MAX_TOKENS', 'default')} | "
+        f"LLAMA_N_GPU_LAYERS={os.getenv('LLAMA_N_GPU_LAYERS', 'default')}"
+    )
+
+    with measure_stage("app.runtime_preparation"):
+        prepare_runtime()
+
     return True
 
 
@@ -215,34 +232,41 @@ if run_button:
 
             try:
 
-                # 1. Generate answer
-                result = answer_question(
-                    question=question,
-                    source_mode=selected_source_mode,
-                    answer_mode=selected_answer_mode,
-                )
 
-                # 2. Save answer and original question
-                st.session_state.last_result = result
-                st.session_state.last_question = question
+                with measure_stage("app.request_total"):
 
-                # 3. Prepare export data
-                export_data = prepare_export_data(
-                    question=question,
-                    result=result,
-                )
+                    # 1. Generate answer
+                    with measure_stage("app.answer_question"):
+                        result = answer_question(
+                            question=question,
+                            source_mode=selected_source_mode,
+                            answer_mode=selected_answer_mode,
+                        )
 
-                # 4. Prepare copy-ready text
-                st.session_state.export_text = (
-                    format_copy_ready(export_data)
-                )
+                    # 2. Save answer and original question
+                    st.session_state.last_result = result
+                    st.session_state.last_question = question
 
-                # 5. Prepare DOCX in memory
-                docx_buffer = create_docx(export_data)
+                    # 3. Prepare export data
+                    with measure_stage("app.export_data"):
+                        export_data = prepare_export_data(
+                            question=question,
+                            result=result,
+                        )
 
-                st.session_state.export_docx = (
-                    docx_buffer.getvalue()
-                )
+                    # 4. Prepare copy-ready text
+                    with measure_stage("app.export_text"):
+                        st.session_state.export_text = (
+                            format_copy_ready(export_data)
+                        )
+
+                    # 5. Prepare DOCX in memory
+                    with measure_stage("app.export_docx"):
+                        docx_buffer = create_docx(export_data)
+
+                        st.session_state.export_docx = (
+                            docx_buffer.getvalue()
+                        )
 
             except Exception as e:
 

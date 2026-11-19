@@ -7,6 +7,7 @@ from rag.answer_contract import AnswerResult
 from rag.answer_generator import generate_final_answer
 from rag.context_formatter import prepare_context_package
 from rag.retrieve_all import retrieve_all
+from rag.runtime_diagnostics import measure_stage
 from rag.search_config import (
     ANSWER_MODES,
     DEFAULT_ANSWER_MODE,
@@ -130,29 +131,36 @@ def run_answer_pipeline(
     source_mode = normalize_source_mode(source_mode)
     answer_mode = normalize_answer_mode(answer_mode)
 
-    retrieval_result = retrieve_all(
-        query=question,
-        source_mode=source_mode,
-        answer_mode=answer_mode,
-    )
 
-    selection = select_context_items(
-        retrieval_result=retrieval_result,
-        primary_k=primary_k,
-        secondary_k=secondary_k,
-        tertiary_k=tertiary_k,
-        use_combined_fallback=use_combined_fallback,
-    )
+    with measure_stage("pipeline.retrieval"):
+        retrieval_result = retrieve_all(
+            query=question,
+            source_mode=source_mode,
+            answer_mode=answer_mode,
+        )
 
-    context_package = prepare_context_package(selection["selected_items"])
+    with measure_stage("pipeline.selection"):
+        selection = select_context_items(
+            retrieval_result=retrieval_result,
+            primary_k=primary_k,
+            secondary_k=secondary_k,
+            tertiary_k=tertiary_k,
+            use_combined_fallback=use_combined_fallback,
+        )
 
-    answer_result = generate_final_answer(
-        question=question,
-        context_blocks=context_package["context_blocks"],
-        citation_candidates=context_package["citation_candidates"],
-        selection=selection,
-        max_citations=max_citations,
-    )
+    with measure_stage("pipeline.context_formatting"):
+        context_package = prepare_context_package(
+            selection["selected_items"]
+        )
+
+    with measure_stage("pipeline.answer_generation"):
+        answer_result = generate_final_answer(
+            question=question,
+            context_blocks=context_package["context_blocks"],
+            citation_candidates=context_package["citation_candidates"],
+            selection=selection,
+            max_citations=max_citations,
+        )
 
     return {
         "question": question,

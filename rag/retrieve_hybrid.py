@@ -6,6 +6,7 @@ from typing import Iterable
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
+from rag.runtime_diagnostics import measure_stage
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CHROMA_DIR = BASE_DIR / "data" / "chroma"
@@ -16,29 +17,34 @@ _EMBEDDINGS: HuggingFaceEmbeddings | None = None
 _VECTORSTORE: Chroma | None = None
 
 
+
 def get_embeddings() -> HuggingFaceEmbeddings:
     global _EMBEDDINGS
 
     if _EMBEDDINGS is None:
-        _EMBEDDINGS = HuggingFaceEmbeddings(
-            model_name=EMBEDDING_MODEL
-        )
+        with measure_stage("embeddings.initialization"):
+            _EMBEDDINGS = HuggingFaceEmbeddings(
+                model_name=EMBEDDING_MODEL
+            )
 
     return _EMBEDDINGS
+
 
 
 def get_vectorstore() -> Chroma:
     global _VECTORSTORE
 
     if _VECTORSTORE is None:
-        _VECTORSTORE = Chroma(
-            collection_name=COLLECTION_NAME,
-            embedding_function=get_embeddings(),
-            persist_directory=str(CHROMA_DIR),
-        )
+        embeddings = get_embeddings()
+
+        with measure_stage("chroma.initialization"):
+            _VECTORSTORE = Chroma(
+                collection_name=COLLECTION_NAME,
+                embedding_function=embeddings,
+                persist_directory=str(CHROMA_DIR),
+            )
 
     return _VECTORSTORE
-
 
 def normalize_text(text: str) -> str:
     return (text or "").strip().lower()
@@ -99,6 +105,7 @@ def filter_documents_by_doc_ids(
     ]
 
 
+
 def semantic_search(
     query: str,
     doc_ids: list[str] | None = None,
@@ -107,16 +114,18 @@ def semantic_search(
 ) -> list[Document]:
     db = get_vectorstore()
 
-    candidates = db.max_marginal_relevance_search(
-        "query: " + query,
-        k=fetch_k,
-        fetch_k=max(fetch_k, k),
-    )
+    with measure_stage("retrieval.semantic_mmr"):
+        candidates = db.max_marginal_relevance_search(
+            "query: " + query,
+            k=fetch_k,
+            fetch_k=max(fetch_k, k),
+        )
 
-    candidates = filter_documents_by_doc_ids(
-        docs=candidates,
-        doc_ids=doc_ids,
-    )
+    with measure_stage("retrieval.semantic_filtering"):
+        candidates = filter_documents_by_doc_ids(
+            docs=candidates,
+            doc_ids=doc_ids,
+        )
 
     return candidates[:k]
 
@@ -180,6 +189,7 @@ def keyword_search(
     return [doc for score, doc in scored[:k]]
 
 
+
 def hybrid_search(
     query: str,
     docs_for_keyword_search: list[Document],
@@ -196,13 +206,18 @@ def hybrid_search(
         fetch_k=max(20, k_semantic * 3),
     )
 
-    keyword_docs = keyword_search(
-        query=query,
-        docs=docs_for_keyword_search,
-        doc_ids=doc_ids_for_keyword,
-        k=k_keyword,
-        min_score=1,
-    )
+    with measure_stage("retrieval.keyword_search"):
+        keyword_docs = keyword_search(
+            query=query,
+            docs=docs_for_keyword_search,
+            doc_ids=doc_ids_for_keyword,
+            k=k_keyword,
+            min_score=1,
+        )
 
-    merged = deduplicate_documents(keyword_docs + semantic_docs)
+    with measure_stage("retrieval.deduplication"):
+        merged = deduplicate_documents(
+            keyword_docs + semantic_docs
+        )
+
     return merged[:final_k]

@@ -7,6 +7,7 @@ from pydantic import BaseModel, ValidationError
 
 from rag.answer_contract import AnswerResult, Citation
 from rag.answer_prompt import SYSTEM_PROMPT, build_user_prompt
+from rag.runtime_diagnostics import measure_stage, log_event
 from rag.llm_config import (
     GGUF_MODEL_PATH,
     LLAMA_MAX_TOKENS,
@@ -38,16 +39,20 @@ class AnswerLLMOutput(BaseModel):
     notes: Optional[str] = None
 
 
+
 @lru_cache(maxsize=1)
 def get_llm() -> Llama:
-    return Llama(
-        model_path=str(GGUF_MODEL_PATH),
-        n_ctx=LLAMA_N_CTX,
-        n_threads=LLAMA_N_THREADS,
-        n_gpu_layers=LLAMA_N_GPU_LAYERS,
-        n_batch=LLAMA_N_BATCH,
-        verbose=LLAMA_VERBOSE,
-    )
+    with measure_stage("llm.initialization"):
+        model = Llama(
+            model_path=str(GGUF_MODEL_PATH),
+            n_ctx=LLAMA_N_CTX,
+            n_threads=LLAMA_N_THREADS,
+            n_gpu_layers=LLAMA_N_GPU_LAYERS,
+            n_batch=LLAMA_N_BATCH,
+            verbose=LLAMA_VERBOSE,
+        )
+
+    return model
 
 
 def build_model_prompt(
@@ -756,6 +761,7 @@ def _truncate_context_by_chars(context_blocks: str, max_chars: int = 7000) -> st
     return context_blocks[:max_chars]
 
 
+
 def generate_answer_structured(
     question: str,
     context_blocks: str,
@@ -764,34 +770,62 @@ def generate_answer_structured(
 ) -> AnswerLLMOutput:
     llm = get_llm()
 
-    trimmed_context_blocks = _truncate_context_by_chars(
-        context_blocks=context_blocks,
-        max_chars=7000,
+    with measure_stage("llm.prompt_preparation"):
+        trimmed_context_blocks = _truncate_context_by_chars(
+            context_blocks=context_blocks,
+            max_chars=7000,
+        )
+
+        prompt = build_model_prompt(
+            question=question,
+            context_blocks=trimmed_context_blocks,
+            selection=selection,
+        )
+
+    log_event(
+        f"LLM_INPUT | "
+        f"context_original_chars={len(context_blocks)} | "
+        f"context_trimmed_chars={len(trimmed_context_blocks)} | "
+        f"prompt_chars={len(prompt)} | "
+        f"n_ctx={LLAMA_N_CTX} | "
+        f"max_tokens={LLAMA_MAX_TOKENS} | "
+        f"n_threads={LLAMA_N_THREADS} | "
+        f"n_batch={LLAMA_N_BATCH} | "
+        f"n_gpu_layers={LLAMA_N_GPU_LAYERS}"
     )
 
-    prompt = build_model_prompt(
-        question=question,
-        context_blocks=trimmed_context_blocks,
-        selection=selection,
+    with measure_stage("llm.inference"):
+        response = llm(
+            prompt,
+            max_tokens=LLAMA_MAX_TOKENS,
+            temperature=LLAMA_TEMPERATURE,
+            top_p=LLAMA_TOP_P,
+            repeat_penalty=LLAMA_REPEAT_PENALTY,
+            stop=["</s>", "<|eot_id|>"],
+        )
+
+    usage = response.get("usage") or {}
+
+    log_event(
+        f"LLM_OUTPUT | "
+        f"prompt_tokens={usage.get('prompt_tokens', 'N/A')} | "
+        f"completion_tokens={usage.get('completion_tokens', 'N/A')} | "
+        f"total_tokens={usage.get('total_tokens', 'N/A')} | "
+        f"finish_reason="
+        f"{response['choices'][0].get('finish_reason', 'N/A')}"
     )
 
-    response = llm(
-        prompt,
-        max_tokens=LLAMA_MAX_TOKENS,
-        temperature=LLAMA_TEMPERATURE,
-        top_p=LLAMA_TOP_P,
-        repeat_penalty=LLAMA_REPEAT_PENALTY,
-        stop=["</s>", "<|eot_id|>"],
-    )
+    with measure_stage("llm.output_parsing"):
+        raw_text = response["choices"][0]["text"].strip()
 
-    raw_text = response["choices"][0]["text"].strip()
+        result = parse_llm_output(
+            raw_text=raw_text,
+            question=question,
+            selection=selection,
+            citation_candidates=citation_candidates,
+        )
 
-    return parse_llm_output(
-        raw_text=raw_text,
-        question=question,
-        selection=selection,
-        citation_candidates=citation_candidates,
-    )
+    return result
 
 
 def merge_llm_output_with_citations(

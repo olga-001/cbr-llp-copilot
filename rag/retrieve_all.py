@@ -5,6 +5,7 @@ from langsmith import traceable
 from rag.merge_results import merge_with_fallback
 from rag.retrieve_primary import retrieve_primary
 from rag.retrieve_secondary import retrieve_secondary
+from rag.runtime_diagnostics import measure_stage
 from rag.search_config import (
     ANSWER_MODE_NORM_ONLY,
     DEFAULT_ANSWER_MODE,
@@ -99,35 +100,39 @@ def retrieve_all(
 
     primary_doc_ids, secondary_doc_ids = split_sources_by_layer(source_ids)
 
+
     primary_results = []
     secondary_results = []
 
     if primary_doc_ids:
-        primary_results = retrieve_primary(
-            query=query,
-            k=top_k_primary,
-            k_semantic=primary_k_semantic,
-            k_keyword=primary_k_keyword,
-            final_k=primary_final_k,
-            doc_ids=primary_doc_ids,
-        )
+        with measure_stage("retrieval.primary"):
+            primary_results = retrieve_primary(
+                query=query,
+                k=top_k_primary,
+                k_semantic=primary_k_semantic,
+                k_keyword=primary_k_keyword,
+                final_k=primary_final_k,
+                doc_ids=primary_doc_ids,
+            )
 
     if secondary_doc_ids:
-        secondary_results = retrieve_secondary(
-            query=query,
-            k=top_k_secondary,
-            k_semantic=secondary_k_semantic,
-            k_keyword=secondary_k_keyword,
-            final_k=secondary_final_k,
-            doc_ids=secondary_doc_ids,
-        )
+        with measure_stage("retrieval.secondary"):
+            secondary_results = retrieve_secondary(
+                query=query,
+                k=top_k_secondary,
+                k_semantic=secondary_k_semantic,
+                k_keyword=secondary_k_keyword,
+                final_k=secondary_final_k,
+                doc_ids=secondary_doc_ids,
+            )
 
-    merged_result = merge_with_fallback(
-        primary_results=primary_results,
-        secondary_results=secondary_results,
-        top_k_primary=top_k_primary,
-        top_k_secondary=top_k_secondary,
-    )
+    with measure_stage("retrieval.merge"):
+        merged_result = merge_with_fallback(
+            primary_results=primary_results,
+            secondary_results=secondary_results,
+            top_k_primary=top_k_primary,
+            top_k_secondary=top_k_secondary,
+        )
 
     merged_result["source_mode"] = source_mode
     merged_result["answer_mode"] = answer_mode
